@@ -118,12 +118,12 @@ def main():
     """Основная логика работы бота."""
     logger.debug('Бот начал работу.')
     bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    timestamp = int(time.time())
     status = ''
     last_message = ''
     if check_tokens():
         while True:
             try:
-                timestamp = int(time.time())
                 response = check_response(get_api_answer(timestamp))
                 if len(response['homeworks']) > 0:
                     if response['homeworks'][0]['status'] != status:
