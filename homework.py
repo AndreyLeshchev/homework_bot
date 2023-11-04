@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
@@ -40,14 +39,14 @@ def check_tokens():
         (TELEGRAM_CHAT_ID, 'TELEGRAM_CHAT_ID'),
     )
     for value, name in environment_vars:
-        if value is None or value in '':
-            return logger.critical(
+        if not value:
+            logger.critical(
                 'Отсутствует обязательная переменная окружения: '
                 f'{name}. '
                 'Программа принудительно остановлена.'
             )
+            raise ValueError('Отсутствует обязательная переменная окружения.')
     logger.debug('Проверка переменных окружений прошла успешно.')
-    return True
 
 
 def send_message(bot, message):
@@ -56,8 +55,10 @@ def send_message(bot, message):
         logger.debug('Попытка отправить сообщение.')
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.debug('Сообщение отправлено успешно.')
+    except telegram.error.TelegramError:
+        logger.error('Cбой в Telegram при отправке сообщения .')
     except Exception:
-        logger.error('Cбой при отправке сообщения в Telegram.')
+        raise Exception('Сообщение не было отправлено.')
 
 
 def get_api_answer(timestamp):
@@ -68,15 +69,16 @@ def get_api_answer(timestamp):
             ENDPOINT, headers=HEADERS,
             params={'from_date': timestamp},
         )
+        valid_response = response.json()
         logger.debug('Запрос успешно отправлен.')
-    except Exception:
-        raise Exception(
-            f'Эндпоинт {ENDPOINT} недоступен. '
-        )
+    except requests.RequestException:
+        raise ConnectionError(f'Эндпоинт {ENDPOINT} недоступен.')
+    except ValueError:
+        raise ValueError('Невалидные данные JSON.')
     status = response.status_code
     if status != requests.codes.ok:
         raise requests.HTTPError(f'Статус ответа {status}')
-    return response.json()
+    return valid_response
 
 
 def check_response(response):
@@ -86,17 +88,10 @@ def check_response(response):
         raise TypeError('Cтруктура данных API не соответствует ожиданиям.')
     elif 'homeworks' not in response:
         raise KeyError('В ответе API нет ключа "homeworks".')
-    else:
-        for key in ('homeworks', 'current_date'):
-            if key not in response:
-                raise KeyError(
-                    'Отсутствие ожидаемых ключей в ответе API.'
-                )
-            else:
-                if type(response['homeworks']) is not list:
-                    raise TypeError(
-                        'Данные "homeworks" приходят не в виде списка.'
-                    )
+    elif 'current_date' not in response:
+        raise KeyError('Отсутствие ожидаемых ключей в ответе API.')
+    elif type(response['homeworks']) is not list:
+        raise TypeError('Данные "homeworks" приходят не в виде списка.')
     logger.debug('Проверка ответа API на соответствие прошла успешно.')
     return response
 
@@ -121,31 +116,31 @@ def main():
     timestamp = int(time.time())
     status = ''
     last_message = ''
-    if check_tokens():
-        while True:
-            try:
-                response = check_response(get_api_answer(timestamp))
-                if len(response['homeworks']) > 0:
-                    if response['homeworks'][0]['status'] != status:
-                        status = response['homeworks'][0]['status']
-                        for homework in response.get('homeworks'):
-                            send_message(bot, parse_status(homework))
-                    else:
-                        message = 'Статус домашней работы не изменился.'
-                        send_message(bot, message)
+    check_tokens()
+    while True:
+        try:
+            response = check_response(get_api_answer(timestamp))
+            if response['homeworks']:
+                if response['homeworks'][0]['status'] != status:
+                    status = response['homeworks'][0]['status']
+                    for homework in response.get('homeworks'):
+                        send_message(bot, parse_status(homework))
                 else:
-                    message = (
-                        'Список домашних работ за период '
-                        f'{timestamp} времени пуст.'
-                    )
+                    message = 'Статус домашней работы не изменился.'
                     send_message(bot, message)
-            except Exception as error:
-                message = f'Сбой в работе программы: {error}'
-                logger.error('Сбой в работе программы: {error}')
-                if message != last_message:
-                    last_message = message
-                    send_message(bot, message)
-            time.sleep(RETRY_PERIOD)
+            else:
+                message = (
+                    'Список домашних работ за период '
+                    f'{timestamp} времени пуст.'
+                )
+                send_message(bot, message)
+        except Exception as error:
+            message = f'Сбой в работе программы: {error}'
+            logger.error('Сбой в работе программы: {error}')
+            if message != last_message:
+                last_message = message
+                send_message(bot, message)
+        time.sleep(RETRY_PERIOD)
 
 
 if __name__ == '__main__':
