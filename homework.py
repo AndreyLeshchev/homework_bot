@@ -1,12 +1,13 @@
 import logging
 import os
+import sys
 import time
 
-import sys
-import json
 import requests
 import telegram
 from dotenv import load_dotenv
+
+from exceptions import CustomTelegramError
 
 load_dotenv()
 
@@ -49,7 +50,7 @@ def send_message(bot, message):
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.debug('Сообщение отправлено успешно.')
     except telegram.error.TelegramError:
-        raise telegram.error.TelegramError(
+        raise CustomTelegramError(
             'Cбой в Telegram при отправке сообщения.'
         )
 
@@ -67,8 +68,8 @@ def get_api_answer(timestamp):
         valid_response = response.json()
     except requests.HTTPError as error:
         raise requests.HTTPError(error)
-    except json.JSONDecodeError:
-        raise json.JSONDecodeError('Невалидные данные JSON.')
+    except ValueError:
+        raise ValueError('Невалидные данные JSON.')
     except requests.RequestException:
         raise ConnectionError(f'Эндпоинт {ENDPOINT} недоступен.')
     logger.debug('Запрос успешно отправлен.')
@@ -135,7 +136,7 @@ def main():
                 )
                 logger.debug(message)
                 send_message(bot, message)
-        except telegram.error.TelegramError as error:
+        except CustomTelegramError as error:
             message = f'Сбой в работе программы: {error}'
             logger.error(message)
         except Exception as error:

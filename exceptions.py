@@ -1,0 +1,2 @@
+class CustomTelegramError(Exception):
+    pass
