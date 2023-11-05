@@ -38,9 +38,9 @@ def check_tokens():
     logger.debug('Начало проверки переменных окружения.')
     for value in (PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID):
         if not value:
-            return True
+            return False
     logger.debug('Проверка переменных окружений прошла успешно.')
-    return False
+    return True
 
 
 def send_message(bot, message):
@@ -111,12 +111,11 @@ def main():
     timestamp = int(time.time())
     status = ''
     last_message = ''
-    if check_tokens():
+    if not check_tokens():
         logger.critical(
             'Отсутствует обязательная переменная окружения. '
-            'Программа принудительно остановлена.'
         )
-        sys.exit()
+        sys.exit('Программа принудительно остановлена.')
     while True:
         try:
             response = check_response(get_api_answer(timestamp))
